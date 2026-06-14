@@ -4,7 +4,7 @@
 high-performance Source-style prediction and rollback for high-speed movement
 shooters.
 
-The goal is to make rollback practical for games that need to run in
+The goal is to make rollback and prediction practical for games that need to run in
 environments like web browsers. And to support strafe jumping, bhopping,
 surfing, sub-ticked hitscan weapons, rockets, rocket jumps, and all 
 kinds of other fun stuff. Only made possible by [bevy_ahoy](https://github.com/janhohenheim/bevy_ahoy) and the
@@ -14,7 +14,7 @@ kinds of other fun stuff. Only made possible by [bevy_ahoy](https://github.com/j
 
 - Server-authoritative KCC movement with client prediction and replay.
 - Remote interpolation for other players.
-- A sub-ticked hitscan weapon example.
+- A sub-ticked lag-compensated hitscan weapon example.
 - Native and browser/WebSocket example paths.
 
 ## Still To Do
