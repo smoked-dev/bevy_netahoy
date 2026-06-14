@@ -17,6 +17,13 @@ kinds of other fun stuff. Only made possible by [bevy_ahoy](https://github.com/j
 - A sub-ticked lag-compensated hitscan weapon example.
 - Native and browser/WebSocket example paths.
 
+Prediction under 200 ping, 10% packet loss, and a 20hz tickrate:
+
+
+https://github.com/user-attachments/assets/348c77c7-0479-4286-b2ff-f13a10579a65
+
+
+
 ## Still To Do
 
 - Lag-compensated rockets. This is a bigger problem than hitscan because it
