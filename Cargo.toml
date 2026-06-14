@@ -1,0 +1,38 @@
+[package]
+name = "bevy_netahoy"
+version = "0.1.0"
+edition = "2024"
+description = "Bevy netcode helpers for Ahoy-powered character controllers."
+readme = "README.md"
+
+[lints.clippy]
+# Bevy query/filter tuples routinely trip this; bevy upstream allows it too.
+type_complexity = "allow"
+
+[dependencies]
+aeronet = "0.20.0"
+avian3d = "0.6.1"
+bevy = { version = "0.18.1", features = ["serialize"] }
+bevy_ahoy = { git = "https://github.com/smoked-dev/bevy_ahoy.git", branch = "step-entity", default-features = false, features = ["serialize"] }
+bevy_replicon = { version = "0.39.5", default-features = false, features = ["client", "server"] }
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+aeronet_replicon = { version = "0.20.0", default-features = false, features = ["client", "server"] }
+aeronet_websocket = { version = "0.20.0", default-features = false, features = ["client", "server"] }
+bevy_enhanced_input = "0.24"
+
+[[example]]
+name = "ahoy_client"
+path = "examples/ahoy_replicon/client.rs"
+
+[[example]]
+name = "ahoy_server"
+path = "examples/ahoy_replicon/server.rs"
+
+[profile.win-dev]
+inherits = "dev"
+strip = "debuginfo"
+
+[profile.win-dev.package."*"]
+opt-level = 3
