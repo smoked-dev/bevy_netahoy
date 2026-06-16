@@ -8,7 +8,7 @@ use bevy::{
 use bevy_netahoy::*;
 use bevy_replicon::prelude::*;
 
-use super::shared::FLYING_TARGET_PLAYER_ID;
+use super::shared::{FLYING_TARGET_PLAYER_ID, HitScanAck, HitScanHit, HitScanShot};
 
 const HITSCAN_MAX_DISTANCE: f32 = 80.0;
 const HIT_MARKER_SECONDS: f32 = 0.75;

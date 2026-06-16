@@ -7,11 +7,11 @@ use std::{
 
 use avian3d::prelude::*;
 use bevy::{prelude::*, state::app::StatesPlugin};
-use bevy_ahoy::{prelude::*, MantleState};
+use bevy_ahoy::{MantleState, prelude::*};
 use bevy_replicon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::debug::{apply_debug_time_scale, DebugTimeScale};
+use crate::debug::{DebugTimeScale, apply_debug_time_scale};
 
 pub const DEFAULT_PORT: u16 = 5000;
 pub const FIXED_TIMESTEP_HZ: f64 = 20.0;
@@ -81,31 +81,6 @@ pub struct AhoyUserCmd {
 #[derive(Event, Serialize, Deserialize, Clone, Debug, Default)]
 pub struct AhoyUserCmdPacket {
     pub commands: Vec<AhoyUserCmd>,
-}
-
-#[derive(Event, Serialize, Deserialize, Clone, Copy, Debug)]
-pub struct HitScanShot {
-    pub shot_id: u32,
-    pub client_sample_tick: u64,
-    pub client_sample_alpha: f32,
-    pub origin: Vec3,
-    pub direction: Vec3,
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-pub struct HitScanHit {
-    pub player_id: PlayerId,
-    pub position: Vec3,
-    pub distance: f32,
-}
-
-#[derive(Event, Serialize, Deserialize, Clone, Copy, Debug)]
-pub struct HitScanAck {
-    pub shot_id: u32,
-    pub server_tick: u64,
-    pub client_sample_tick: u64,
-    pub client_sample_alpha: f32,
-    pub hit: Option<HitScanHit>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]

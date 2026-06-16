@@ -5,13 +5,39 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use bevy_ahoy::prelude::*;
-use bevy_netahoy::{HitScanAck, HitScanShot, SharedNetAhoyPlugin};
+use bevy_netahoy::{PlayerId, SharedNetAhoyPlugin};
 use bevy_replicon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 pub const WORLD_COLLISION_LAYER: LayerMask = LayerMask(1 << 0);
 pub const PLAYER_COLLISION_LAYER: LayerMask = LayerMask(1 << 1);
 pub const SPAWN_POINT: Vec3 = Vec3::new(0.0, 2.2, 8.0);
 pub const FLYING_TARGET_PLAYER_ID: u64 = 9_001;
+
+#[derive(Event, Serialize, Deserialize, Clone, Copy, Debug)]
+pub struct HitScanShot {
+    pub shot_id: u32,
+    pub client_sample_tick: u64,
+    pub client_sample_alpha: f32,
+    pub origin: Vec3,
+    pub direction: Vec3,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct HitScanHit {
+    pub player_id: PlayerId,
+    pub position: Vec3,
+    pub distance: f32,
+}
+
+#[derive(Event, Serialize, Deserialize, Clone, Copy, Debug)]
+pub struct HitScanAck {
+    pub shot_id: u32,
+    pub server_tick: u64,
+    pub client_sample_tick: u64,
+    pub client_sample_alpha: f32,
+    pub hit: Option<HitScanHit>,
+}
 
 pub struct ExampleSharedPlugin;
 
