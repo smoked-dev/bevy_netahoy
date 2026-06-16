@@ -7,7 +7,7 @@ use std::{
 
 use avian3d::prelude::*;
 use bevy::{prelude::*, state::app::StatesPlugin};
-use bevy_ahoy::{CharacterLook, MantleState, prelude::*};
+use bevy_ahoy::{MantleState, prelude::*};
 use bevy_replicon::prelude::*;
 use serde::{Deserialize, Serialize};
 

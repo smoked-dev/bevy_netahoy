@@ -149,11 +149,12 @@ impl Plugin for ClientPlugin {
                 Update,
                 (
                     attach_player_meshes,
+                    sync_debug_ghosts_from_snapshots,
                     spawn_client_prediction_kcc,
                     spawn_remote_player_visuals,
                     toggle_remote_ghost_debug,
                     update_hit_markers,
-                    update_camera_from_client_prediction_kcc,
+                    update_camera_from_local_presentation,
                     automatic_fire,
                     update_speed_text,
                     update_status_text,
@@ -368,6 +369,32 @@ fn attach_player_meshes(
             })),
             visibility,
         ));
+    }
+}
+
+fn sync_debug_ghosts_from_snapshots(
+    mut players: Query<
+        (
+            &AhoySnapshot,
+            &mut Transform,
+            Option<&mut CharacterLook>,
+        ),
+        (
+            With<NetworkedPlayer>,
+            Or<(Changed<AhoySnapshot>, Added<Transform>)>,
+        ),
+    >,
+) {
+    for (snapshot, mut transform, look) in &mut players {
+        if snapshot.server_tick == 0 {
+            continue;
+        }
+
+        transform.translation = snapshot.position;
+        if let Some(mut look) = look {
+            look.yaw = snapshot.look.x;
+            look.pitch = snapshot.look.y;
+        }
     }
 }
 
@@ -714,19 +741,19 @@ fn update_hit_markers(
     }
 }
 
-fn update_camera_from_client_prediction_kcc(
+fn update_camera_from_local_presentation(
     look: Res<ClientLook>,
-    predictions: Query<&Transform, (With<ClientPredictionKcc>, Without<Camera3d>)>,
-    server_players: Query<&Transform, (With<ServerTruthGhost>, Without<Camera3d>)>,
+    presentations: Query<&Transform, (With<LocalPresentationPlayer>, Without<Camera3d>)>,
+    server_players: Query<&AhoySnapshot, With<ServerTruthGhost>>,
     mut camera: Single<&mut Transform, CameraRigFilter>,
 ) {
-    let target = predictions
+    let target = presentations
         .single()
         .map(|transform| transform.translation + Vec3::Y * 0.6)
         .or_else(|_| {
             server_players
                 .single()
-                .map(|transform| transform.translation + Vec3::Y * 0.6)
+                .map(|snapshot| snapshot.position + Vec3::Y * 0.6)
         })
         .unwrap_or(SPAWN_POINT);
     let rotation = Quat::from_euler(EulerRot::YXZ, look.yaw, look.pitch, 0.0);
