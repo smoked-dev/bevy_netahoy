@@ -7,11 +7,11 @@ use std::{
 
 use avian3d::prelude::*;
 use bevy::{prelude::*, state::app::StatesPlugin};
-use bevy_ahoy::{MantleState, prelude::*};
+use bevy_ahoy::{prelude::*, MantleState};
 use bevy_replicon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::debug::{DebugTimeScale, apply_debug_time_scale};
+use crate::debug::{apply_debug_time_scale, DebugTimeScale};
 
 pub const DEFAULT_PORT: u16 = 5000;
 pub const FIXED_TIMESTEP_HZ: f64 = 20.0;
@@ -20,7 +20,6 @@ pub const DEFAULT_SERVER_ADDR: SocketAddr =
 pub const DEFAULT_SERVER_URL: &str = "ws://127.0.0.1:5000";
 pub const PLAYER_CAPSULE_RADIUS: f32 = 0.45;
 pub const PLAYER_CAPSULE_HALF_HEIGHT: f32 = 0.75;
-pub const HITSCAN_MAX_DISTANCE: f32 = 80.0;
 
 #[derive(Default)]
 pub struct SharedNetAhoyPlugin;
@@ -42,8 +41,6 @@ impl Plugin for SharedNetAhoyPlugin {
             .add_client_event::<JoinRequest>(Channel::Ordered)
             .add_server_event::<JoinAccepted>(Channel::Ordered)
             .add_client_event::<AhoyUserCmdPacket>(Channel::Unreliable)
-            .add_client_event::<HitScanShot>(Channel::Unreliable)
-            .add_server_event::<HitScanAck>(Channel::Ordered)
             .add_systems(Startup, apply_debug_time_scale);
     }
 }

@@ -1,6 +1,6 @@
 use aeronet::io::{
-    Session, SessionEndpoint,
     connection::{DisconnectReason, Disconnected},
+    Session, SessionEndpoint,
 };
 use aeronet_replicon::client::{AeronetRepliconClient, AeronetRepliconClientPlugin};
 use aeronet_websocket::client::{ClientConfig, WebSocketClient, WebSocketClientPlugin};
@@ -12,20 +12,20 @@ use bevy::{
     window::{CursorGrabMode, CursorOptions, PresentMode},
     winit::{UpdateMode::Continuous, WinitSettings},
 };
-use bevy_ahoy::{CharacterLook, prelude::*};
+use bevy_ahoy::{prelude::*, CharacterLook};
 use bevy_enhanced_input::prelude::EnhancedInputPlugin;
 use bevy_netahoy::*;
 use bevy_replicon::prelude::*;
 
+mod hitscan;
 mod shared;
+use hitscan::ExampleHitscanClientSystems;
 use shared::*;
 
 const CAMERA_DISTANCE: f32 = 5.2;
 const CAMERA_HEIGHT: f32 = 0.85;
 const CAMERA_SHOULDER_OFFSET: f32 = 1.25;
 const CAMERA_AIM_RIGHT_OFFSET: f32 = 0.85;
-const HIT_MARKER_SECONDS: f32 = 0.75;
-const AUTO_FIRE_INTERVAL_SECONDS: f32 = 0.10;
 
 fn main() -> AppExit {
     let poor_network = poor_network_from_args();
@@ -34,8 +34,6 @@ fn main() -> AppExit {
 
     let mut app = App::new();
     app.insert_resource(ClientLook::default())
-        .insert_resource(ClientShotState::default())
-        .insert_resource(ShotFeedback::default())
         .insert_resource(KccStateDebug::default())
         .insert_resource(remote_ghost_debug)
         .insert_resource(time_scale)
@@ -61,7 +59,7 @@ fn main() -> AppExit {
         PhysicsPlugins::default(),
         EnhancedInputPlugin,
         AhoyPlugins::new(NetAhoyKccSchedule),
-        SharedNetAhoyPlugin,
+        ExampleSharedPlugin,
         ClientNetAhoyPlugin,
         ClientPlugin,
     ))
@@ -79,18 +77,6 @@ fn remote_ghost_debug_from_args() -> RemoteGhostDebug {
 struct ClientLook {
     yaw: f32,
     pitch: f32,
-}
-
-#[derive(Resource, Default)]
-struct ClientShotState {
-    next_shot_id: u32,
-    seconds_until_next_shot: f32,
-}
-
-#[derive(Resource, Default)]
-struct ShotFeedback {
-    predicted: String,
-    acknowledged: String,
 }
 
 #[derive(Resource, Default)]
@@ -114,15 +100,7 @@ struct StatusText;
 struct PredictionText;
 
 #[derive(Component)]
-struct ShotText;
-
-#[derive(Component)]
 struct KccStateText;
-
-#[derive(Component)]
-struct HitMarker {
-    timer: Timer,
-}
 
 type CameraRigFilter = (
     With<Camera3d>,
@@ -135,10 +113,11 @@ struct ClientPlugin;
 
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
+        hitscan::add_client_hitscan(app);
+
         app.add_plugins((WebSocketClientPlugin, AeronetRepliconClientPlugin))
             .add_observer(use_replicon_for_session)
             .add_observer(set_window_title_on_join)
-            .add_observer(receive_shot_ack)
             .add_observer(log_connected)
             .add_observer(log_disconnected)
             .add_systems(Startup, (setup_client, setup_scene, setup_hud))
@@ -163,17 +142,15 @@ impl Plugin for ClientPlugin {
                     spawn_client_prediction_kcc,
                     spawn_remote_player_visuals,
                     toggle_remote_ghost_debug,
-                    update_hit_markers,
                     update_camera_from_local_presentation,
-                    automatic_fire,
                     update_speed_text,
                     update_status_text,
                     update_kcc_state_text,
                     update_prediction_text,
-                    update_shot_text,
                 )
                     .chain()
-                    .after(ClientNetAhoySystems::Interpolate),
+                    .after(ClientNetAhoySystems::Interpolate)
+                    .before(ExampleHitscanClientSystems::Fire),
             );
     }
 }
@@ -276,18 +253,6 @@ fn setup_hud(mut commands: Commands) {
         Text::new("prediction: waiting"),
         TextColor(Color::WHITE.with_alpha(0.55)),
         PredictionText,
-    ));
-
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            top: px(64.0),
-            left: px(16.0),
-            ..default()
-        },
-        Text::new("shots: predicted none | server none"),
-        TextColor(Color::WHITE.with_alpha(0.55)),
-        ShotText,
     ));
 
     commands.spawn((
@@ -397,11 +362,7 @@ fn attach_player_meshes(
 
 fn sync_debug_ghosts_from_snapshots(
     mut players: Query<
-        (
-            &AhoySnapshot,
-            &mut Transform,
-            Option<&mut CharacterLook>,
-        ),
+        (&AhoySnapshot, &mut Transform, Option<&mut CharacterLook>),
         (
             With<NetworkedPlayer>,
             Or<(Changed<AhoySnapshot>, Added<Transform>)>,
@@ -607,163 +568,6 @@ fn gather_client_input(
     };
 }
 
-fn automatic_fire(
-    mut commands: Commands,
-    cursor: Single<&CursorOptions>,
-    mouse_buttons: Res<ButtonInput<MouseButton>>,
-    time: Res<Time>,
-    clock: Res<ClientServerClock>,
-    local: Res<LocalPlayerId>,
-    mut shot_state: ResMut<ClientShotState>,
-    mut feedback: ResMut<ShotFeedback>,
-    camera: Single<&Transform, CameraRigFilter>,
-    targets: Query<(&RemotePlayerVisual, &Transform)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    if !mouse_buttons.pressed(MouseButton::Left) {
-        shot_state.seconds_until_next_shot = 0.0;
-        return;
-    }
-    if cursor.grab_mode != CursorGrabMode::Locked {
-        return;
-    }
-
-    shot_state.seconds_until_next_shot -= time.delta_secs();
-    if shot_state.seconds_until_next_shot > 0.0 {
-        return;
-    }
-    shot_state.seconds_until_next_shot = AUTO_FIRE_INTERVAL_SECONDS;
-
-    let shot_id = shot_state.next_shot_id.wrapping_add(1);
-    shot_state.next_shot_id = shot_id;
-
-    let origin = camera.translation;
-    let direction = camera.rotation * Vec3::NEG_Z;
-    let predicted_hit = predicted_hit_scan(origin, direction, local.0, &targets);
-    let sample_time = clock.target_time().unwrap_or_default();
-
-    feedback.predicted = predicted_hit
-        .map(|hit| format_hit("client", hit))
-        .unwrap_or_else(|| format!("client #{shot_id}: miss"));
-
-    if let Some(hit) = predicted_hit {
-        spawn_hit_marker(
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            hit.position,
-            Color::srgb(0.2, 1.0, 0.35),
-            "client predicted hit",
-        );
-    }
-
-    commands.client_trigger(HitScanShot {
-        shot_id,
-        client_sample_tick: sample_time.tick,
-        client_sample_alpha: sample_time.alpha,
-        origin,
-        direction,
-    });
-}
-
-fn predicted_hit_scan(
-    origin: Vec3,
-    direction: Vec3,
-    local_player_id: Option<u64>,
-    targets: &Query<(&RemotePlayerVisual, &Transform)>,
-) -> Option<HitScanHit> {
-    targets
-        .iter()
-        .filter(|(visual, _)| Some(visual.player_id.0) != local_player_id)
-        .filter_map(|(visual, transform)| {
-            let distance = ray_capsule_distance(
-                origin,
-                direction,
-                HITSCAN_MAX_DISTANCE,
-                transform.translation,
-                PLAYER_CAPSULE_RADIUS,
-                PLAYER_CAPSULE_HALF_HEIGHT,
-            )?;
-            Some(HitScanHit {
-                player_id: visual.player_id,
-                position: origin + direction.normalize_or_zero() * distance,
-                distance,
-            })
-        })
-        .min_by(|a, b| a.distance.total_cmp(&b.distance))
-}
-
-fn receive_shot_ack(
-    ack: On<HitScanAck>,
-    mut commands: Commands,
-    mut feedback: ResMut<ShotFeedback>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    feedback.acknowledged = ack
-        .hit
-        .map(|hit| format_hit("server", hit))
-        .unwrap_or_else(|| format!("server #{}: miss", ack.shot_id));
-
-    if let Some(hit) = ack.hit {
-        spawn_hit_marker(
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            hit.position,
-            Color::srgb(1.0, 0.12, 0.1),
-            "server ack hit",
-        );
-    }
-}
-
-fn spawn_hit_marker(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    position: Vec3,
-    color: Color,
-    name: &'static str,
-) {
-    commands.spawn((
-        Name::new(name),
-        HitMarker {
-            timer: Timer::from_seconds(HIT_MARKER_SECONDS, TimerMode::Once),
-        },
-        Mesh3d(meshes.add(Cuboid::new(0.18, 0.18, 0.18))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: color,
-            ..default()
-        })),
-        Transform::from_translation(position),
-    ));
-}
-
-fn format_hit(source: &str, hit: HitScanHit) -> String {
-    let target = if hit.player_id.0 == FLYING_TARGET_PLAYER_ID {
-        "target".to_string()
-    } else {
-        format!("player {}", hit.player_id.0)
-    };
-    format!("{source}: {target} {:.1}m", hit.distance)
-}
-
-fn update_hit_markers(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut markers: Query<(Entity, &mut HitMarker, &mut Transform)>,
-) {
-    for (entity, mut marker, mut transform) in &mut markers {
-        marker.timer.tick(time.delta());
-        let remaining = marker.timer.remaining_secs() / HIT_MARKER_SECONDS;
-        transform.scale = Vec3::splat(remaining.max(0.15));
-        if marker.timer.is_finished() {
-            commands.entity(entity).despawn();
-        }
-    }
-}
-
 fn update_camera_from_local_presentation(
     look: Res<ClientLook>,
     presentations: Query<&Transform, (With<LocalPresentationPlayer>, Without<Camera3d>)>,
@@ -825,8 +629,7 @@ fn update_kcc_state_text(
     server_snapshot: Option<Single<&AhoySnapshot, With<ServerTruthGhost>>>,
     mut debug: ResMut<KccStateDebug>,
 ) {
-    let predicted =
-        predicted_state.map(|state| NetAhoyMoveState::from_controller_state(*state));
+    let predicted = predicted_state.map(|state| NetAhoyMoveState::from_controller_state(*state));
     let server = server_snapshot
         .filter(|snapshot| snapshot.server_tick != 0)
         .map(|snapshot| snapshot.state);
@@ -890,19 +693,4 @@ fn update_prediction_text(
         prediction.replayed_commands,
         prediction.presentation_offset.length()
     );
-}
-
-fn update_shot_text(feedback: Res<ShotFeedback>, mut text: Single<&mut Text, With<ShotText>>) {
-    let predicted = if feedback.predicted.is_empty() {
-        "client none"
-    } else {
-        feedback.predicted.as_str()
-    };
-    let acknowledged = if feedback.acknowledged.is_empty() {
-        "server none"
-    } else {
-        feedback.acknowledged.as_str()
-    };
-
-    text.0 = format!("shots: {predicted} | {acknowledged}");
 }

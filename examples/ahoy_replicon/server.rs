@@ -6,11 +6,12 @@ use bevy::{
     prelude::*,
     window::{ExitCondition, WindowPlugin},
 };
-use bevy_ahoy::{CharacterLook, prelude::*};
+use bevy_ahoy::{prelude::*, CharacterLook};
 use bevy_enhanced_input::prelude::EnhancedInputPlugin;
 use bevy_netahoy::*;
 use bevy_replicon::prelude::*;
 
+mod hitscan;
 mod shared;
 use shared::*;
 
@@ -32,7 +33,7 @@ fn main() -> AppExit {
             PhysicsPlugins::default(),
             EnhancedInputPlugin,
             AhoyPlugins::new(NetAhoyKccSchedule),
-            SharedNetAhoyPlugin,
+            ExampleSharedPlugin,
             ServerNetAhoyPlugin,
             ServerPlugin,
         ))
@@ -43,6 +44,8 @@ struct ServerPlugin;
 
 impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
+        hitscan::add_server_hitscan(app);
+
         app.add_plugins((WebSocketServerPlugin, AeronetRepliconServerPlugin))
             .add_observer(join_player)
             .add_observer(clean_up_disconnected_player)

@@ -23,7 +23,7 @@ pub const REMOTE_CLOCK_MAX_CATCHUP_RATE: f64 = 0.10;
 pub const IGNORE_XZ_ERROR: f32 = 0.035;
 pub const IGNORE_GROUNDED_Y_ERROR: f32 = 0.20;
 pub const SNAP_ERROR_DISTANCE: f32 = 2.25;
-pub const PRESENTATION_RESPONSE: f32 = 18.0;
+pub const PRESENTATION_RESPONSE: f32 = 10.0;
 
 #[derive(SystemSet, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum ClientNetAhoySystems {

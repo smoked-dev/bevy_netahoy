@@ -5,11 +5,23 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use bevy_ahoy::prelude::*;
+use bevy_netahoy::{HitScanAck, HitScanShot, SharedNetAhoyPlugin};
+use bevy_replicon::prelude::*;
 
 pub const WORLD_COLLISION_LAYER: LayerMask = LayerMask(1 << 0);
 pub const PLAYER_COLLISION_LAYER: LayerMask = LayerMask(1 << 1);
 pub const SPAWN_POINT: Vec3 = Vec3::new(0.0, 2.2, 8.0);
 pub const FLYING_TARGET_PLAYER_ID: u64 = 9_001;
+
+pub struct ExampleSharedPlugin;
+
+impl Plugin for ExampleSharedPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins(SharedNetAhoyPlugin)
+            .add_client_event::<HitScanShot>(Channel::Unreliable)
+            .add_server_event::<HitScanAck>(Channel::Ordered);
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct WorldBox {
@@ -112,7 +124,7 @@ pub fn spawn_world_render(
 
 pub fn player_controller() -> CharacterController {
     CharacterController {
-    //    filter: SpatialQueryFilter::from_mask(WORLD_COLLISION_LAYER),
+        //    filter: SpatialQueryFilter::from_mask(WORLD_COLLISION_LAYER),
         acceleration_hz: 10.0,
         air_acceleration_hz: 120.0,
         speed: 6.5,
