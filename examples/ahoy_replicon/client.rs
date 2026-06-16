@@ -36,6 +36,7 @@ fn main() -> AppExit {
     app.insert_resource(ClientLook::default())
         .insert_resource(ClientShotState::default())
         .insert_resource(ShotFeedback::default())
+        .insert_resource(KccStateDebug::default())
         .insert_resource(remote_ghost_debug)
         .insert_resource(time_scale)
         .insert_resource(WinitSettings {
@@ -93,6 +94,12 @@ struct ShotFeedback {
 }
 
 #[derive(Resource, Default)]
+struct KccStateDebug {
+    predicted_seen_mantle: bool,
+    server_seen_mantle: bool,
+}
+
+#[derive(Resource, Default)]
 struct RemoteGhostDebug {
     visible: bool,
 }
@@ -108,6 +115,9 @@ struct PredictionText;
 
 #[derive(Component)]
 struct ShotText;
+
+#[derive(Component)]
+struct KccStateText;
 
 #[derive(Component)]
 struct HitMarker {
@@ -158,6 +168,7 @@ impl Plugin for ClientPlugin {
                     automatic_fire,
                     update_speed_text,
                     update_status_text,
+                    update_kcc_state_text,
                     update_prediction_text,
                     update_shot_text,
                 )
@@ -277,6 +288,18 @@ fn setup_hud(mut commands: Commands) {
         Text::new("shots: predicted none | server none"),
         TextColor(Color::WHITE.with_alpha(0.55)),
         ShotText,
+    ));
+
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(88.0),
+            left: px(16.0),
+            ..default()
+        },
+        Text::new("kcc: waiting"),
+        TextColor(Color::WHITE.with_alpha(0.55)),
+        KccStateText,
     ));
 
     commands.spawn((
@@ -794,6 +817,55 @@ fn update_status_text(
         status.push_str(" - ghosts");
     }
     text.0 = status;
+}
+
+fn update_kcc_state_text(
+    mut text: Single<&mut Text, With<KccStateText>>,
+    predicted_state: Option<Single<&CharacterControllerState, With<ClientPredictionKcc>>>,
+    server_snapshot: Option<Single<&AhoySnapshot, With<ServerTruthGhost>>>,
+    mut debug: ResMut<KccStateDebug>,
+) {
+    let predicted =
+        predicted_state.map(|state| NetAhoyMoveState::from_controller_state(*state));
+    let server = server_snapshot
+        .filter(|snapshot| snapshot.server_tick != 0)
+        .map(|snapshot| snapshot.state);
+
+    debug.predicted_seen_mantle |= predicted
+        .as_ref()
+        .is_some_and(|state| state.mantle_height_left.is_some());
+    debug.server_seen_mantle |= server
+        .as_ref()
+        .is_some_and(|state| state.mantle_height_left.is_some());
+
+    let predicted_label = predicted
+        .map(format_kcc_state)
+        .unwrap_or_else(|| "predicted waiting".to_string());
+    let server_label = server
+        .map(format_kcc_state)
+        .unwrap_or_else(|| "server waiting".to_string());
+    let mantle_seen = match (debug.predicted_seen_mantle, debug.server_seen_mantle) {
+        (true, true) => "mantle seen predicted+server",
+        (true, false) => "mantle seen predicted",
+        (false, true) => "mantle seen server",
+        (false, false) => "mantle not seen",
+    };
+
+    text.0 = format!("kcc: {predicted_label} | {server_label} | {mantle_seen}");
+}
+
+fn format_kcc_state(state: NetAhoyMoveState) -> String {
+    if let Some(height_left) = state.mantle_height_left {
+        format!("mantle {height_left:.2}m")
+    } else if let Some(height_left) = state.crane_height_left {
+        format!("crane {height_left:.2}m")
+    } else if state.crouching {
+        "crouch".to_string()
+    } else if state.grounded {
+        "ground".to_string()
+    } else {
+        "air".to_string()
+    }
 }
 
 fn update_prediction_text(
