@@ -53,7 +53,7 @@ pub fn poor_network_from_args() -> bool {
     std::env::args().any(|arg| arg == "--poor-net")
 }
 
-pub(crate) fn apply_debug_time_scale(
+pub fn apply_debug_time_scale(
     config: Res<DebugTimeScale>,
     mut virtual_time: ResMut<Time<Virtual>>,
 ) {

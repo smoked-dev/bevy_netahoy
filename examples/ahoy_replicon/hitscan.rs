@@ -8,11 +8,14 @@ use bevy::{
 use bevy_netahoy::*;
 use bevy_replicon::prelude::*;
 
-use super::shared::{FLYING_TARGET_PLAYER_ID, HitScanAck, HitScanHit, HitScanShot};
+use ahoy_replicon::{HitScanAck, HitScanHit, HitScanShot};
+
+use super::shared::FLYING_TARGET_PLAYER_ID;
 
 const HITSCAN_MAX_DISTANCE: f32 = 80.0;
 const HIT_MARKER_SECONDS: f32 = 0.75;
 const AUTO_FIRE_INTERVAL_SECONDS: f32 = 0.10;
+const PREDICTED_HIT_ACK_TIMEOUT_SECONDS: f32 = 1.0;
 
 #[derive(SystemSet, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum ExampleHitscanClientSystems {
@@ -29,6 +32,7 @@ pub fn add_client_hitscan(app: &mut App) {
             (
                 update_hit_markers,
                 automatic_fire.in_set(ExampleHitscanClientSystems::Fire),
+                warn_unacked_predicted_hits,
                 update_shot_text,
             )
                 .chain()
@@ -44,6 +48,12 @@ pub fn add_server_hitscan(app: &mut App) {
 struct ClientShotState {
     next_shot_id: u32,
     seconds_until_next_shot: f32,
+    pending_predicted_hits: Vec<PendingPredictedHit>,
+}
+
+struct PendingPredictedHit {
+    shot_id: u32,
+    seconds_without_ack: f32,
 }
 
 #[derive(Resource, Default)]
@@ -110,7 +120,7 @@ fn process_shot(
             ignored_player: Some(*shooter_id),
         })
         .map(|hit| HitScanHit {
-            player_id: hit.player_id,
+            player_id: hit.player_id.0,
             position: hit.position,
             distance: hit.distance,
         });
@@ -168,6 +178,11 @@ fn automatic_fire(
         .unwrap_or_else(|| format!("client #{shot_id}: miss"));
 
     if let Some(hit) = predicted_hit {
+        shot_state.pending_predicted_hits.push(PendingPredictedHit {
+            shot_id,
+            seconds_without_ack: 0.0,
+        });
+
         spawn_hit_marker(
             &mut commands,
             &mut meshes,
@@ -206,7 +221,7 @@ fn predicted_hit_scan(
                 PLAYER_CAPSULE_HALF_HEIGHT,
             )?;
             Some(HitScanHit {
-                player_id: visual.player_id,
+                player_id: visual.player_id.0,
                 position: origin + direction.normalize_or_zero() * distance,
                 distance,
             })
@@ -217,10 +232,15 @@ fn predicted_hit_scan(
 fn receive_shot_ack(
     ack: On<HitScanAck>,
     mut commands: Commands,
+    mut shot_state: ResMut<ClientShotState>,
     mut feedback: ResMut<ShotFeedback>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    shot_state
+        .pending_predicted_hits
+        .retain(|pending| pending.shot_id != ack.shot_id);
+
     feedback.acknowledged = ack
         .hit
         .map(|hit| format_hit("server", hit))
@@ -236,6 +256,25 @@ fn receive_shot_ack(
             "server ack hit",
         );
     }
+}
+
+fn warn_unacked_predicted_hits(
+    time: Res<Time>,
+    mut shot_state: ResMut<ClientShotState>,
+    mut feedback: ResMut<ShotFeedback>,
+) {
+    let dt = time.delta_secs();
+
+    shot_state.pending_predicted_hits.retain_mut(|pending| {
+        pending.seconds_without_ack += dt;
+        if pending.seconds_without_ack < PREDICTED_HIT_ACK_TIMEOUT_SECONDS {
+            return true;
+        }
+
+        feedback.acknowledged = format!("server #{}: no ack after 1000ms", pending.shot_id);
+        warn!("{}", feedback.acknowledged);
+        false
+    });
 }
 
 fn spawn_hit_marker(
@@ -261,10 +300,10 @@ fn spawn_hit_marker(
 }
 
 fn format_hit(source: &str, hit: HitScanHit) -> String {
-    let target = if hit.player_id.0 == FLYING_TARGET_PLAYER_ID {
+    let target = if hit.player_id == FLYING_TARGET_PLAYER_ID {
         "target".to_string()
     } else {
-        format!("player {}", hit.player_id.0)
+        format!("player {}", hit.player_id)
     };
     format!("{source}: {target} {:.1}m", hit.distance)
 }

@@ -1,4 +1,4 @@
-//! Wire types, replicated components, and the plugin both peers add.
+//! Wire types, replicated components, and the protocol plugin both peers add.
 
 use std::{
     cmp::Ordering,
@@ -6,12 +6,10 @@ use std::{
 };
 
 use avian3d::prelude::*;
-use bevy::{prelude::*, state::app::StatesPlugin};
+use bevy::prelude::*;
 use bevy_ahoy::{MantleState, prelude::*};
 use bevy_replicon::prelude::*;
 use serde::{Deserialize, Serialize};
-
-use crate::debug::{DebugTimeScale, apply_debug_time_scale};
 
 pub const DEFAULT_PORT: u16 = 5000;
 pub const FIXED_TIMESTEP_HZ: f64 = 20.0;
@@ -22,26 +20,18 @@ pub const PLAYER_CAPSULE_RADIUS: f32 = 0.45;
 pub const PLAYER_CAPSULE_HALF_HEIGHT: f32 = 0.75;
 
 #[derive(Default)]
-pub struct SharedNetAhoyPlugin;
+pub struct NetAhoyProtocolPlugin;
 
-impl Plugin for SharedNetAhoyPlugin {
+impl Plugin for NetAhoyProtocolPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<StatesPlugin>() {
-            app.add_plugins(StatesPlugin);
-        }
-
-        app.insert_resource(Time::<Fixed>::from_hz(FIXED_TIMESTEP_HZ))
-            .init_resource::<DebugTimeScale>()
-            .add_plugins(RepliconPlugins)
-            .replicate::<NetworkedPlayer>()
+        app.replicate::<NetworkedPlayer>()
             .replicate::<PlayerId>()
             .replicate::<AhoySnapshot>()
             .replicate_filtered::<Transform, Without<AhoySnapshot>>()
             .replicate_filtered::<LinearVelocity, Without<AhoySnapshot>>()
             .add_client_event::<JoinRequest>(Channel::Ordered)
             .add_server_event::<JoinAccepted>(Channel::Ordered)
-            .add_client_event::<AhoyUserCmdPacket>(Channel::Unreliable)
-            .add_systems(Startup, apply_debug_time_scale);
+            .add_client_event::<AhoyUserCmdPacket>(Channel::Unreliable);
     }
 }
 

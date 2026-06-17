@@ -3,49 +3,45 @@
 #![allow(dead_code)]
 
 use avian3d::prelude::*;
-use bevy::prelude::*;
+use bevy::{prelude::*, state::app::StatesPlugin};
 use bevy_ahoy::prelude::*;
-use bevy_netahoy::{PlayerId, SharedNetAhoyPlugin};
+use bevy_netahoy::{
+    DebugTimeScale, FIXED_TIMESTEP_HZ, NetAhoyProtocolPlugin, apply_debug_time_scale,
+};
 use bevy_replicon::prelude::*;
-use serde::{Deserialize, Serialize};
+
+use ahoy_replicon::{HitScanAck, HitScanShot};
 
 pub const WORLD_COLLISION_LAYER: LayerMask = LayerMask(1 << 0);
 pub const PLAYER_COLLISION_LAYER: LayerMask = LayerMask(1 << 1);
 pub const SPAWN_POINT: Vec3 = Vec3::new(0.0, 2.2, 8.0);
 pub const FLYING_TARGET_PLAYER_ID: u64 = 9_001;
 
-#[derive(Event, Serialize, Deserialize, Clone, Copy, Debug)]
-pub struct HitScanShot {
-    pub shot_id: u32,
-    pub client_sample_tick: u64,
-    pub client_sample_alpha: f32,
-    pub origin: Vec3,
-    pub direction: Vec3,
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-pub struct HitScanHit {
-    pub player_id: PlayerId,
-    pub position: Vec3,
-    pub distance: f32,
-}
-
-#[derive(Event, Serialize, Deserialize, Clone, Copy, Debug)]
-pub struct HitScanAck {
-    pub shot_id: u32,
-    pub server_tick: u64,
-    pub client_sample_tick: u64,
-    pub client_sample_alpha: f32,
-    pub hit: Option<HitScanHit>,
-}
-
 pub struct ExampleSharedPlugin;
 
 impl Plugin for ExampleSharedPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(SharedNetAhoyPlugin)
-            .add_client_event::<HitScanShot>(Channel::Unreliable)
-            .add_server_event::<HitScanAck>(Channel::Ordered);
+        if !app.is_plugin_added::<StatesPlugin>() {
+            app.add_plugins(StatesPlugin);
+        }
+
+        app.insert_resource(Time::<Fixed>::from_hz(FIXED_TIMESTEP_HZ))
+            .init_resource::<DebugTimeScale>()
+            .add_plugins((RepliconPlugins, NetAhoyProtocolPlugin))
+            // What's the best channel? Ordered, Unreliable, something else?
+            // On web browsers, it's all ReliableOrdered anyway, due to having
+            // only one IO layer and TCP head of line blocking. Only difference
+            // is that with Unordered, you skip replicons own ordering apparatus.
+            // As of 2026.
+            // For UDP? I'd prefer Reliable for this specific example, however
+            // it would still suck compared to having "fire" be an input inside
+            // the UserCmd struct itself, like in Quake. Since Reliable here
+            // with UDP would delay until rtt before retransmitting. UserCmds 
+            // get beamed every tick. For UDP, I'd extend UserCmd itself with
+            // a "fire" button and whatnot
+            .add_client_event::<HitScanShot>(Channel::Unordered) 
+            .add_server_event::<HitScanAck>(Channel::Unordered)
+            .add_systems(Startup, apply_debug_time_scale);
     }
 }
 
