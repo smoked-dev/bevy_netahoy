@@ -1,8 +1,5 @@
-//! Server-side command consumption, snapshot publishing, and lag compensation.
-//!
-//! The game spawns player entities (with [`PlayerOwner`], [`ServerCommandBuffer`],
-//! [`QueuedUserCmds`], and the Ahoy KCC components) however it likes; this
-//! plugin consumes their queued commands and publishes [`AhoySnapshot`]s.
+//! Takes the moves players send, runs them, and tells everyone what really
+//! happened — plus a little history for lag compensation.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -15,7 +12,7 @@ use crate::{
     math::{
         ray_segment_capsule_distance, sample_buffer_at, RemoteRenderTime, RemoteSnapshotSample,
     },
-    pmove::{MovementEffects, NetAhoyStepper},
+    step::{MovementEffects, NetAhoyStepper},
     protocol::*,
 };
 

@@ -51,13 +51,8 @@ pub struct JoinAccepted {
 }
 
 bitflags! {
-    /// Movement buttons for one command. Bits `0..16` are library-defined (the
-    /// KCC reads them); bits `16..` are game-defined and library-opaque — the
-    /// library replays them in the sequenced command but never interprets them,
-    /// so weapon fire and other game inputs ride here via [`from_bits_retain`]
-    /// and stay rollback-correct (they replay with the command stream).
-    ///
-    /// [`from_bits_retain`]: AhoyButtons::from_bits_retain
+    /// Buttons for one command. Bits 0..16 are the library's (movement reads them);
+    /// bits 16.. are the game's, carried untouched (e.g. weapon fire via from_bits_retain).
     #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
     pub struct AhoyButtons: u32 {
         const JUMP = 1 << 0;

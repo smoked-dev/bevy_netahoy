@@ -1,8 +1,5 @@
-//! The Source-style movement context: one user command in, one KCC step out.
-//!
-//! [`NetAhoyStepper`] is the single movement code path. Client prediction,
-//! client replay after a misprediction, and server command consumption all go
-//! through [`NetAhoyStepper::step`], so they cannot drift apart.
+//! The movement context: one user command in, one movement step out.
+//! Prediction, replay, and the server all go through [`NetAhoyStepper::step`].
 
 use avian3d::prelude::*;
 use bevy::{
@@ -14,11 +11,8 @@ use bevy_ahoy::{CharacterLook, input::AccumulatedInput, prelude::*};
 
 use crate::protocol::{AhoyButtons, AhoySnapshot, AhoyUserCmd, NetAhoyMoveState};
 
-/// The deterministic slice of a player's movement state handed to a
-/// [`MovementEffect`]. By value so the effect never holds a live borrow of
-/// the player query, freeing the read-only [`SpatialQuery`] to be borrowed
-/// alongside. Velocity is *not* here — it's the one mutable thing, passed as
-/// `&mut Vec3`.
+/// A copy of a player (not a live query handle) handed to a [`MovementEffect`],
+/// so [`SpatialQuery`] can be borrowed alongside. Velocity is passed separately.
 #[derive(Clone, Copy, Debug)]
 pub struct MoveView {
     pub position: Vec3,
@@ -26,14 +20,8 @@ pub struct MoveView {
     pub look: Vec2,
 }
 
-/// A game movement effect evaluated inside the per-step path: jump pads, rocket
-/// jumps, anything that nudges velocity. It may read only inputs that replay
-/// reproduces — the player's own view, this command (incl. the game-defined
-/// [`AhoyButtons`] bits), `previous_buttons` for edge detection, and the *static*
-/// world via the read-only [`SpatialQuery`] — and writes through `&mut Vec3`
-/// velocity, so it can set, add, zero, or clamp as it likes. The narrow signature
-/// is the guardrail: an effect physically cannot read another player or touch
-/// anything but velocity, so it cannot desync on replay.
+/// A nudge to the player — jump pad, rocket blast, anything. It sees only
+/// replay-safe inputs and may change `velocity` alone, so it can't desync.
 pub type MovementEffect = fn(
     view: MoveView,
     command: &AhoyUserCmd,
@@ -45,9 +33,8 @@ pub type MovementEffect = fn(
 #[derive(Resource, Default)]
 pub struct MovementEffects(pub Vec<MovementEffect>);
 
-/// Schedule that Ahoy's own per-tick systems are parked in. Netcode steps the
-/// KCC manually through [`NetAhoyStepper`]; add [`NetAhoyKccRunnerPlugin`] only
-/// if you want Ahoy to also run automatically every fixed tick.
+/// Where Ahoy's own per-tick systems sit; netcode steps by hand via [`NetAhoyStepper`].
+/// Add [`NetAhoyKccRunnerPlugin`] only if you also want Ahoy running every fixed tick.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NetAhoyKccSchedule;
 
@@ -90,15 +77,7 @@ pub struct PmoveParts {
     state: &'static mut CharacterControllerState,
 }
 
-/// The movement context. The Bevy dependencies of a KCC step live in here so
-/// callers read like Source's `pmove`:
-///
-/// ```ignore
-/// for command in commands {
-///     stepper.step(entity, command, previous_buttons)?;
-///     previous_buttons = command.buttons;
-/// }
-/// ```
+/// The movement context: all the Bevy bits a step needs, so callers stay short.
 #[derive(SystemParam)]
 pub struct NetAhoyStepper<'w, 's> {
     // ParamSet because the Ahoy stepper's internal query also writes
@@ -117,9 +96,8 @@ pub struct NetAhoyStepper<'w, 's> {
 }
 
 impl NetAhoyStepper<'_, '_> {
-    /// Run one user command through one KCC movement step for `entity`.
-    /// `previous_buttons` is the prior command's buttons, used for rising-edge
-    /// detection (library bits in the controller, game bits in movement effects).
+    /// Run one command through one movement step. `previous_buttons` lets us spot
+    /// freshly pressed buttons (library bits for the controller, game bits for effects).
     pub fn step(
         &mut self,
         entity: Entity,
@@ -152,11 +130,8 @@ impl NetAhoyStepper<'_, '_> {
             )
         };
 
-        // Movement effects (jump pads, rocket jumps, ...) run inside the step so
-        // client replay and the server reproduce them. Each reads only `view` +
-        // this command + `previous_buttons` + the read-only static-world
-        // SpatialQuery, and mutates `velocity` in registration order. `velocity`
-        // is a local copy, so p1 is not borrowed while p2 (SpatialQuery) is.
+        // Effects (jump pads, rockets, ...) run here so client replay and server match.
+        // `velocity` is a local copy, so p1 stays free while p2 (SpatialQuery) is borrowed.
         if !self.effects.0.is_empty() {
             // Clone the (cheap, fn-pointer) list to drop the Res borrow before p2.
             let effects = self.effects.0.clone();

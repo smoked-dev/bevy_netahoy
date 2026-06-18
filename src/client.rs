@@ -1,8 +1,5 @@
-//! Client-side prediction, reconciliation, and remote-player interpolation.
-//!
-//! The game feeds [`ClientInput`] every frame and spawns a prediction entity
-//! (tagged [`ClientPredictionKcc`]) when its local [`ServerTruthGhost`]
-//! appears; this plugin does the rest.
+//! Lives on the player's machine: guesses where they're going (prediction),
+//! fixes the guess when the server disagrees (reconciliation), draws everyone.
 
 use std::collections::VecDeque;
 
@@ -11,7 +8,7 @@ use bevy_replicon::prelude::*;
 
 use crate::{
     math::{RemoteRenderTime, RemoteSnapshotSample, sample_buffer_at},
-    pmove::{AhoyPredictionFrame, MovementEffects, NetAhoyStepper},
+    step::{AhoyPredictionFrame, MovementEffects, NetAhoyStepper},
     protocol::*,
 };
 

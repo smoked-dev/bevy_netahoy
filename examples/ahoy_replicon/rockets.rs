@@ -1,9 +1,5 @@
-//! Predicted rocket-jump self-impulse, expressed as a netcode movement ability.
-//!
-//! The impulse (`rocket_jump`) runs inside the movement step on both client and
-//! server, so client replay reproduces it exactly — that's the whole accuracy
-//! story. The explosion *visual* is a separate live-only system that never runs
-//! in the replay loop, so it fires once with no context plumbing.
+//! A rocket jump, as a movement ability. The push runs in the movement step on
+//! client and server so replay stays exact; the explosion visual runs live only.
 #![allow(dead_code)]
 
 use avian3d::prelude::*;
@@ -13,9 +9,8 @@ use bevy_netahoy::*;
 
 use super::shared::WORLD_COLLISION_LAYER;
 
-/// Our game's bit in [`AhoyButtons`] for "fire rocket", in the game-owned high
-/// range. The library never sees this — it just replays the bits; we own the
-/// meaning. `from_bits_retain` keeps the bit through (de)serialization.
+/// Our game's "fire rocket" bit, in the game-owned high range the library never
+/// reads. `from_bits_retain` keeps it through save/load.
 pub const ROCKET_FIRE: AhoyButtons = AhoyButtons::from_bits_retain(1 << 16);
 
 const ROCKET_EYE_HEIGHT: f32 = 0.6;
@@ -43,10 +38,8 @@ fn register_rocket_ability(mut effects: ResMut<MovementEffects>) {
     effects.0.push(rocket_jump);
 }
 
-/// The predicted effect: on the fire bit's rising edge, raycast against the
-/// static world and add the splash impulse to the firer's velocity. Reads only
-/// the caller's view, this command's button bits, `previous_buttons`, and static
-/// geometry — so it re-derives identically every replay step and cannot desync.
+/// On the fire button's rising edge, raycast the static world and shove the player.
+/// Only reads replay-safe inputs, so every replay matches and nobody desyncs.
 fn rocket_jump(
     view: MoveView,
     command: &AhoyUserCmd,
@@ -65,10 +58,8 @@ fn rocket_jump(
     *velocity += rocket_impulse(explosion, view.position);
 }
 
-/// Where a shot fired from `position` along `look` detonates against the static
-/// world. Filtering to `WORLD_COLLISION_LAYER` excludes all players (a separate
-/// layer), so the result depends only on static geometry — and no self-entity
-/// exclusion is needed, keeping this a plain `fn`.
+/// Where a shot from `position` along `look` hits the static world. Only checks
+/// `WORLD_COLLISION_LAYER`, so players are excluded and it stays a plain `fn`.
 fn rocket_explosion_point(position: Vec3, look: Vec2, world: &SpatialQuery) -> Option<Vec3> {
     let rotation = Quat::from_euler(EulerRot::YXZ, look.x, look.y, 0.0);
     let direction = (rotation * Vec3::NEG_Z).normalize_or_zero();
@@ -103,9 +94,8 @@ struct RocketMarker {
     timer: Timer,
 }
 
-/// Live-only: spawn one explosion marker per fire. Never runs in the replay
-/// loop (that lives inside `reconcile`), so the visual fires exactly once.
-/// Re-derives the shot from the predicted player, matching the ability.
+/// Live only: one explosion marker per fire. Never runs in replay, so it fires
+/// once; re-derives the shot from the predicted player to match the ability.
 fn spawn_rocket_visual(
     input: Res<ClientInput>,
     mut fired: Local<bool>,
