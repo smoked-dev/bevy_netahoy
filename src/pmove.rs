@@ -14,6 +14,43 @@ use bevy_ahoy::{CharacterLook, input::AccumulatedInput, prelude::*};
 
 use crate::protocol::{AhoyButtons, AhoySnapshot, AhoyUserCmd, NetAhoyMoveState};
 
+/// A static, axis-aligned region that *sets* a player's vertical velocity while
+/// the player's center is inside it. Field effects (jump pads, bounce pads) are
+/// pure data — the lib applies them in the [`NetAhoyStepper::pmove`] tail so they
+/// re-derive identically during client replay and server simulation. Set (not
+/// add) keeps multi-tick contact idempotent.
+#[derive(Clone, Copy, Debug)]
+pub struct LaunchZone {
+    pub center: Vec3,
+    pub half_extents: Vec3,
+    pub launch_speed: f32,
+}
+
+#[derive(Resource, Default)]
+pub struct LaunchZones(pub Vec<LaunchZone>);
+
+/// The deterministic slice of a player's movement state handed to a
+/// [`MovementAbility`]. By value so the ability never holds a live borrow of the
+/// player query, freeing the read-only [`SpatialQuery`] to be borrowed alongside.
+#[derive(Clone, Copy, Debug)]
+pub struct MoveView {
+    pub position: Vec3,
+    /// `x` = yaw, `y` = pitch (radians).
+    pub look: Vec2,
+    pub velocity: Vec3,
+}
+
+/// A game ability evaluated inside the per-step path. It may read only inputs
+/// that replay reproduces — the player's own state, this command, and the
+/// *static* world via the read-only [`SpatialQuery`] — and returns a velocity
+/// delta. This signature is the guardrail: an ability physically cannot read
+/// another player or dynamic entity, so it cannot desync on replay.
+pub type MovementAbility =
+    fn(view: MoveView, command: &AhoyUserCmd, previous_buttons: AhoyButtons, world: &SpatialQuery) -> Option<Vec3>;
+
+#[derive(Resource, Default)]
+pub struct MovementAbilities(pub Vec<MovementAbility>);
+
 /// Schedule that Ahoy's own per-tick systems are parked in. Netcode steps the
 /// KCC manually through [`NetAhoyStepper`]; add [`NetAhoyKccRunnerPlugin`] only
 /// if you want Ahoy to also run automatically every fixed tick.
@@ -78,8 +115,11 @@ pub struct NetAhoyStepper<'w, 's> {
         (
             CharacterControllerStepper<'w, 's>,
             Query<'w, 's, PmoveParts>,
+            SpatialQuery<'w, 's>,
         ),
     >,
+    zones: Res<'w, LaunchZones>,
+    abilities: Res<'w, MovementAbilities>,
     fixed_time: Res<'w, Time<Fixed>>,
 }
 
@@ -104,9 +144,61 @@ impl NetAhoyStepper<'_, '_> {
         self.set.p0().step_entity(entity, fixed_delta)?;
 
         // The step writes Transform; Position is what the next step reads.
-        let mut players = self.set.p1();
-        let mut parts = players.get_mut(entity)?;
-        parts.position.0 = parts.transform.translation;
+        let view = {
+            let mut players = self.set.p1();
+            let mut parts = players.get_mut(entity)?;
+            parts.position.0 = parts.transform.translation;
+            MoveView {
+                position: parts.transform.translation,
+                look: Vec2::new(parts.look.yaw, parts.look.pitch),
+                velocity: parts.velocity.0,
+            }
+        };
+
+        self.apply_movement_effects(entity, view, command, previous_buttons)?;
+        Ok(())
+    }
+
+    /// Field effects (data zones) then ability effects (game fns), applied to
+    /// velocity inside the step so client replay and the server reproduce them.
+    /// All inputs are replay-reproducible: position, this command, static world.
+    fn apply_movement_effects(
+        &mut self,
+        entity: Entity,
+        view: MoveView,
+        command: AhoyUserCmd,
+        previous_buttons: AhoyButtons,
+    ) -> Result<()> {
+        // Field zones: set vertical velocity while inside. Set (not +=) so
+        // multi-tick contact is idempotent and re-derives cleanly on replay.
+        let launch_y = self.zones.0.iter().find_map(|zone| {
+            ((view.position - zone.center).abs().cmple(zone.half_extents).all())
+                .then_some(zone.launch_speed)
+        });
+
+        // Abilities: each reads only `view` + this command + the read-only
+        // SpatialQuery, and returns a Δvelocity. `view` is by value, so p1 is
+        // not borrowed while p2 (SpatialQuery) is.
+        let mut impulse = Vec3::ZERO;
+        if !self.abilities.0.is_empty() {
+            // Collect first to release the Res borrow before touching the ParamSet.
+            let abilities = self.abilities.0.clone();
+            let world = self.set.p2();
+            for ability in &abilities {
+                if let Some(delta) = ability(view, &command, previous_buttons, &world) {
+                    impulse += delta;
+                }
+            }
+        }
+
+        if launch_y.is_some() || impulse != Vec3::ZERO {
+            let mut players = self.set.p1();
+            let mut parts = players.get_mut(entity)?;
+            parts.velocity.0 += impulse;
+            if let Some(y) = launch_y {
+                parts.velocity.0.y = y;
+            }
+        }
         Ok(())
     }
 

@@ -19,9 +19,10 @@ use bevy_replicon::prelude::*;
 
 mod hitscan;
 mod jumppad;
+mod rockets;
 mod shared;
 use hitscan::ExampleHitscanClientSystems;
-use jumppad::apply_jump_pads;
+use jumppad::register_jump_pad_zones;
 use shared::*;
 
 const CAMERA_DISTANCE: f32 = 5.2;
@@ -116,13 +117,17 @@ struct ClientPlugin;
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
         hitscan::add_client_hitscan(app);
+        rockets::add_client_rockets(app);
 
         app.add_plugins((WebSocketClientPlugin, AeronetRepliconClientPlugin))
             .add_observer(use_replicon_for_session)
             .add_observer(set_window_title_on_join)
             .add_observer(log_connected)
             .add_observer(log_disconnected)
-            .add_systems(Startup, (setup_client, setup_scene, setup_hud))
+            .add_systems(
+                Startup,
+                (setup_client, setup_scene, setup_hud, register_jump_pad_zones).chain(),
+            )
             .add_systems(
                 Update,
                 (
@@ -135,10 +140,6 @@ impl Plugin for ClientPlugin {
             .add_systems(
                 RunFixedMainLoop,
                 gather_client_input.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
-            )
-            .add_systems(
-                FixedPreUpdate,
-                apply_jump_pads.after(ClientNetAhoySystems::Predict),
             )
             .add_systems(
                 Update,
@@ -544,6 +545,7 @@ fn update_client_look(
 
 fn gather_client_input(
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     look: Res<ClientLook>,
     mut input: ResMut<ClientInput>,
 ) {
@@ -571,6 +573,7 @@ fn gather_client_input(
         crane: keys.pressed(KeyCode::KeyQ),
         climbdown: keys.pressed(KeyCode::KeyZ),
         swim_up: keys.pressed(KeyCode::Space),
+        fire_rocket: mouse.pressed(MouseButton::Right) || keys.pressed(KeyCode::KeyF),
     };
 }
 

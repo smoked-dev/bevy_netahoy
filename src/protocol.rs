@@ -58,6 +58,9 @@ pub struct AhoyButtons {
     pub crane: bool,
     pub climbdown: bool,
     pub swim_up: bool,
+    /// Pragmatic seam for the demo's rocket-jump ability. Generalize to a small
+    /// button bitset if more game abilities ever need their own command bits.
+    pub fire_rocket: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]

@@ -15,7 +15,7 @@ use crate::{
     math::{
         ray_segment_capsule_distance, sample_buffer_at, RemoteRenderTime, RemoteSnapshotSample,
     },
-    pmove::NetAhoyStepper,
+    pmove::{LaunchZones, MovementAbilities, NetAhoyStepper},
     protocol::*,
 };
 
@@ -37,6 +37,8 @@ impl Plugin for ServerNetAhoyPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ServerTick>()
             .init_resource::<LagCompensationHistory>()
+            .init_resource::<LaunchZones>()
+            .init_resource::<MovementAbilities>()
             .add_observer(queue_player_commands)
             .add_systems(FixedFirst, advance_server_tick)
             .add_systems(

@@ -1,6 +1,5 @@
-use avian3d::prelude::*;
 use bevy::prelude::*;
-use bevy_ahoy::CharacterController;
+use bevy_netahoy::{LaunchZone, LaunchZones};
 
 pub const JUMP_PAD_TRANSLATION: Vec3 = Vec3::new(8.0, 0.15, 7.0);
 pub const JUMP_PAD_SIZE: Vec3 = Vec3::new(3.0, 0.3, 3.0);
@@ -13,29 +12,16 @@ const JUMP_PAD_TRIGGER_HALF_EXTENTS: Vec3 =
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct JumpPad;
 
-pub fn apply_jump_pads(
-    pads: Query<&Transform, With<JumpPad>>,
-    mut players: Query<
-        (&Transform, &mut LinearVelocity),
-        (With<CharacterController>, Without<JumpPad>),
-    >,
-) {
-    for (player_transform, mut velocity) in &mut players {
-        if pads
-            .iter()
-            .any(|pad_transform| contains_player(pad_transform, player_transform.translation))
-        {
-            velocity.y = JUMP_PAD_VERTICAL_SPEED;
-        }
+/// Register each jump pad as a static [`LaunchZone`] the netcode applies inside
+/// the movement step, so it re-derives identically during prediction, replay,
+/// and on the server. Pads are static, so this runs once after they spawn.
+pub fn register_jump_pad_zones(pads: Query<&Transform, With<JumpPad>>, mut zones: ResMut<LaunchZones>) {
+    for pad in &pads {
+        zones.0.push(LaunchZone {
+            center: pad.translation
+                + Vec3::Y * (JUMP_PAD_SIZE.y * 0.5 + PLAYER_CAPSULE_HALF_HEIGHT),
+            half_extents: JUMP_PAD_TRIGGER_HALF_EXTENTS,
+            launch_speed: JUMP_PAD_VERTICAL_SPEED,
+        });
     }
-}
-
-fn contains_player(pad_transform: &Transform, player_position: Vec3) -> bool {
-    let center =
-        pad_transform.translation + Vec3::Y * (JUMP_PAD_SIZE.y * 0.5 + PLAYER_CAPSULE_HALF_HEIGHT);
-
-    (player_position - center)
-        .abs()
-        .cmple(JUMP_PAD_TRIGGER_HALF_EXTENTS)
-        .all()
 }
