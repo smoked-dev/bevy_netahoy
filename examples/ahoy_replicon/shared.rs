@@ -6,17 +6,18 @@ use avian3d::prelude::*;
 use bevy::{prelude::*, state::app::StatesPlugin};
 use bevy_ahoy::prelude::*;
 use bevy_netahoy::{
-    DebugTimeScale, FIXED_TIMESTEP_HZ, NetAhoyProtocolPlugin, apply_debug_time_scale,
+    apply_debug_time_scale, DebugTimeScale, NetAhoyProtocolPlugin, FIXED_TIMESTEP_HZ,
 };
 use bevy_replicon::prelude::*;
 
 use ahoy_replicon::{HitScanAck, HitScanShot};
 
+use crate::jumppad::{JumpPad, JUMP_PAD_SIZE, JUMP_PAD_TRANSLATION};
+
 pub const WORLD_COLLISION_LAYER: LayerMask = LayerMask(1 << 0);
 pub const PLAYER_COLLISION_LAYER: LayerMask = LayerMask(1 << 1);
 pub const SPAWN_POINT: Vec3 = Vec3::new(0.0, 2.2, 8.0);
 pub const FLYING_TARGET_PLAYER_ID: u64 = 9_001;
-
 pub struct ExampleSharedPlugin;
 
 impl Plugin for ExampleSharedPlugin {
@@ -36,10 +37,10 @@ impl Plugin for ExampleSharedPlugin {
             // For UDP? I'd prefer Reliable for this specific example, however
             // it would still suck compared to having "fire" be an input inside
             // the UserCmd struct itself, like in Quake. Since Reliable here
-            // with UDP would delay until rtt before retransmitting. UserCmds 
+            // with UDP would delay until rtt before retransmitting. UserCmds
             // get beamed every tick. For UDP, I'd extend UserCmd itself with
             // a "fire" button and whatnot
-            .add_client_event::<HitScanShot>(Channel::Unordered) 
+            .add_client_event::<HitScanShot>(Channel::Unordered)
             .add_server_event::<HitScanAck>(Channel::Unordered)
             .add_systems(Startup, apply_debug_time_scale);
     }
@@ -54,7 +55,7 @@ pub struct WorldBox {
     pub color: Color,
 }
 
-pub fn world_boxes() -> [WorldBox; 6] {
+pub fn world_boxes() -> [WorldBox; 7] {
     [
         WorldBox {
             name: "floor",
@@ -98,18 +99,32 @@ pub fn world_boxes() -> [WorldBox; 6] {
             rotation: Quat::IDENTITY,
             color: Color::srgb(0.45, 0.38, 0.30),
         },
+        WorldBox {
+            name: "jump pad",
+            translation: JUMP_PAD_TRANSLATION,
+            size: JUMP_PAD_SIZE,
+            rotation: Quat::IDENTITY,
+            color: Color::srgb(0.95, 0.25, 0.75),
+        },
     ]
 }
 
 pub fn spawn_world_colliders(commands: &mut Commands) {
     for world_box in world_boxes() {
+        let transform = Transform {
+            translation: world_box.translation,
+            rotation: world_box.rotation,
+            ..default()
+        };
+
+        if world_box.name == "jump pad" {
+            commands.spawn((Name::new(world_box.name), transform, JumpPad));
+            continue;
+        }
+
         commands.spawn((
             Name::new(world_box.name),
-            Transform {
-                translation: world_box.translation,
-                rotation: world_box.rotation,
-                ..default()
-            },
+            transform,
             RigidBody::Static,
             Collider::cuboid(world_box.size.x, world_box.size.y, world_box.size.z),
             CollisionLayers::new(WORLD_COLLISION_LAYER, LayerMask::ALL),

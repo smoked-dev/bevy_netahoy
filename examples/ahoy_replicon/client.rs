@@ -18,8 +18,10 @@ use bevy_netahoy::*;
 use bevy_replicon::prelude::*;
 
 mod hitscan;
+mod jumppad;
 mod shared;
 use hitscan::ExampleHitscanClientSystems;
+use jumppad::apply_jump_pads;
 use shared::*;
 
 const CAMERA_DISTANCE: f32 = 5.2;
@@ -133,6 +135,10 @@ impl Plugin for ClientPlugin {
             .add_systems(
                 RunFixedMainLoop,
                 gather_client_input.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
+            )
+            .add_systems(
+                FixedPreUpdate,
+                apply_jump_pads.after(ClientNetAhoySystems::Predict),
             )
             .add_systems(
                 Update,

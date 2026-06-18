@@ -12,7 +12,9 @@ use bevy_netahoy::*;
 use bevy_replicon::prelude::*;
 
 mod hitscan;
+mod jumppad;
 mod shared;
+use jumppad::apply_jump_pads;
 use shared::*;
 
 fn main() -> AppExit {
@@ -52,7 +54,7 @@ impl Plugin for ServerPlugin {
             .add_systems(Startup, setup_server)
             .add_systems(
                 FixedPreUpdate,
-                (update_flying_target, reset_fallen_players)
+                (update_flying_target, apply_jump_pads, reset_fallen_players)
                     .chain()
                     .after(ServerNetAhoySystems::ApplyCommands),
             );
