@@ -1,4 +1,4 @@
-//! Wire types, replicated components, and the plugin both peers add.
+//! Wire types, replicated components, and the protocol plugin both peers add.
 
 use std::{
     cmp::Ordering,
@@ -6,12 +6,10 @@ use std::{
 };
 
 use avian3d::prelude::*;
-use bevy::{prelude::*, state::app::StatesPlugin};
-use bevy_ahoy::{CharacterLook, MantleState, prelude::*};
+use bevy::prelude::*;
+use bevy_ahoy::{MantleState, prelude::*};
 use bevy_replicon::prelude::*;
 use serde::{Deserialize, Serialize};
-
-use crate::debug::{DebugTimeScale, apply_debug_time_scale};
 
 pub const DEFAULT_PORT: u16 = 5000;
 pub const FIXED_TIMESTEP_HZ: f64 = 20.0;
@@ -20,32 +18,20 @@ pub const DEFAULT_SERVER_ADDR: SocketAddr =
 pub const DEFAULT_SERVER_URL: &str = "ws://127.0.0.1:5000";
 pub const PLAYER_CAPSULE_RADIUS: f32 = 0.45;
 pub const PLAYER_CAPSULE_HALF_HEIGHT: f32 = 0.75;
-pub const HITSCAN_MAX_DISTANCE: f32 = 80.0;
 
 #[derive(Default)]
-pub struct SharedNetAhoyPlugin;
+pub struct NetAhoyProtocolPlugin;
 
-impl Plugin for SharedNetAhoyPlugin {
+impl Plugin for NetAhoyProtocolPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<StatesPlugin>() {
-            app.add_plugins(StatesPlugin);
-        }
-
-        app.insert_resource(Time::<Fixed>::from_hz(FIXED_TIMESTEP_HZ))
-            .init_resource::<DebugTimeScale>()
-            .add_plugins(RepliconPlugins)
-            .replicate::<NetworkedPlayer>()
+        app.replicate::<NetworkedPlayer>()
             .replicate::<PlayerId>()
             .replicate::<AhoySnapshot>()
-            .replicate::<Transform>()
-            .replicate::<CharacterLook>()
-            .replicate::<LinearVelocity>()
+            .replicate_filtered::<Transform, Without<AhoySnapshot>>()
+            .replicate_filtered::<LinearVelocity, Without<AhoySnapshot>>()
             .add_client_event::<JoinRequest>(Channel::Ordered)
             .add_server_event::<JoinAccepted>(Channel::Ordered)
-            .add_client_event::<AhoyUserCmdPacket>(Channel::Unreliable)
-            .add_client_event::<HitScanShot>(Channel::Unreliable)
-            .add_server_event::<HitScanAck>(Channel::Ordered)
-            .add_systems(Startup, apply_debug_time_scale);
+            .add_client_event::<AhoyUserCmdPacket>(Channel::Unreliable);
     }
 }
 
@@ -85,31 +71,6 @@ pub struct AhoyUserCmd {
 #[derive(Event, Serialize, Deserialize, Clone, Debug, Default)]
 pub struct AhoyUserCmdPacket {
     pub commands: Vec<AhoyUserCmd>,
-}
-
-#[derive(Event, Serialize, Deserialize, Clone, Copy, Debug)]
-pub struct HitScanShot {
-    pub shot_id: u32,
-    pub client_sample_tick: u64,
-    pub client_sample_alpha: f32,
-    pub origin: Vec3,
-    pub direction: Vec3,
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-pub struct HitScanHit {
-    pub player_id: PlayerId,
-    pub position: Vec3,
-    pub distance: f32,
-}
-
-#[derive(Event, Serialize, Deserialize, Clone, Copy, Debug)]
-pub struct HitScanAck {
-    pub shot_id: u32,
-    pub server_tick: u64,
-    pub client_sample_tick: u64,
-    pub client_sample_alpha: f32,
-    pub hit: Option<HitScanHit>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]

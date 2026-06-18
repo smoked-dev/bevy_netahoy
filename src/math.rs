@@ -3,6 +3,7 @@
 
 use std::collections::VecDeque;
 
+use avian3d::prelude::{Collider, Position, Rotation};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -157,49 +158,20 @@ pub(crate) fn ray_segment_capsule_distance(
     segment_b: Vec3,
     radius: f32,
 ) -> Option<f32> {
-    let ray_end = origin + direction * max_distance;
-    let (ray_fraction, distance_squared) =
-        closest_segment_segment_fraction(origin, ray_end, segment_a, segment_b);
-    (distance_squared <= radius * radius).then_some(ray_fraction * max_distance)
-}
-
-fn closest_segment_segment_fraction(p1: Vec3, q1: Vec3, p2: Vec3, q2: Vec3) -> (f32, f32) {
-    let d1 = q1 - p1;
-    let d2 = q2 - p2;
-    let r = p1 - p2;
-    let a = d1.length_squared();
-    let e = d2.length_squared();
-    let f = d2.dot(r);
-    let epsilon = 1.0e-6;
-
-    let (s, t) = if a <= epsilon && e <= epsilon {
-        (0.0, 0.0)
-    } else if a <= epsilon {
-        (0.0, (f / e).clamp(0.0, 1.0))
-    } else {
-        let c = d1.dot(r);
-        if e <= epsilon {
-            ((-c / a).clamp(0.0, 1.0), 0.0)
-        } else {
-            let b = d1.dot(d2);
-            let denom = a * e - b * b;
-            let s = if denom != 0.0 {
-                ((b * f - c * e) / denom).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-            let tnom = b * s + f;
-            if tnom < 0.0 {
-                ((-c / a).clamp(0.0, 1.0), 0.0)
-            } else if tnom > e {
-                (((b - c) / a).clamp(0.0, 1.0), 1.0)
-            } else {
-                (s, tnom / e)
-            }
-        }
-    };
-
-    let c1 = p1 + d1 * s;
-    let c2 = p2 + d2 * t;
-    (s, c1.distance_squared(c2))
+    let direction = direction.try_normalize()?;
+    let capsule_center = segment_a.midpoint(segment_b);
+    let capsule = Collider::capsule_endpoints(
+        radius,
+        segment_a - capsule_center,
+        segment_b - capsule_center,
+    );
+    let (distance, _) = capsule.cast_ray(
+        Position::new(capsule_center),
+        Rotation::IDENTITY,
+        origin,
+        direction,
+        max_distance,
+        false,
+    )?;
+    Some(distance)
 }

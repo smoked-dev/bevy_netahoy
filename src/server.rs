@@ -1,5 +1,4 @@
-//! Server-side command consumption, snapshot publishing, and lag-compensated
-//! hitscan.
+//! Server-side command consumption, snapshot publishing, and lag compensation.
 //!
 //! The game spawns player entities (with [`PlayerOwner`], [`ServerCommandBuffer`],
 //! [`QueuedUserCmds`], and the Ahoy KCC components) however it likes; this
@@ -9,11 +8,13 @@ use std::collections::{HashMap, VecDeque};
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use bevy_ahoy::{CharacterLook, prelude::*};
+use bevy_ahoy::{prelude::*, CharacterLook};
 use bevy_replicon::prelude::*;
 
 use crate::{
-    math::{RemoteRenderTime, RemoteSnapshotSample, ray_segment_capsule_distance, sample_buffer_at},
+    math::{
+        ray_segment_capsule_distance, sample_buffer_at, RemoteRenderTime, RemoteSnapshotSample,
+    },
     pmove::NetAhoyStepper,
     protocol::*,
 };
@@ -37,7 +38,6 @@ impl Plugin for ServerNetAhoyPlugin {
         app.init_resource::<ServerTick>()
             .init_resource::<LagCompensationHistory>()
             .add_observer(queue_player_commands)
-            .add_observer(process_shot)
             .add_systems(FixedFirst, advance_server_tick)
             .add_systems(
                 FixedPreUpdate,
@@ -154,7 +154,10 @@ impl LagCompensationHistory {
         sample_buffer_at(self.poses.get(&player_id)?, server_time)
     }
 
-    pub fn raycast_capsules_at_time(&self, cast: LagCompensatedCapsuleCast) -> Option<HitScanHit> {
+    pub fn raycast_capsules_at_time(
+        &self,
+        cast: LagCompensatedCapsuleCast,
+    ) -> Option<LagCompensatedCapsuleHit> {
         let direction = cast.direction.try_normalize()?;
 
         self.poses
@@ -171,7 +174,7 @@ impl LagCompensationHistory {
                     pose.position + Vec3::Y * cast.half_height,
                     cast.radius,
                 )?;
-                Some(HitScanHit {
+                Some(LagCompensatedCapsuleHit {
                     player_id,
                     position: cast.origin + direction * distance,
                     distance,
@@ -190,6 +193,13 @@ pub struct LagCompensatedCapsuleCast {
     pub radius: f32,
     pub half_height: f32,
     pub ignored_player: Option<PlayerId>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LagCompensatedCapsuleHit {
+    pub player_id: PlayerId,
+    pub position: Vec3,
+    pub distance: f32,
 }
 
 fn advance_server_tick(mut tick: ResMut<ServerTick>) {
@@ -246,46 +256,6 @@ fn apply_player_commands(
             );
         }
     }
-}
-
-fn process_shot(
-    shot: On<FromClient<HitScanShot>>,
-    mut commands: Commands,
-    tick: Res<ServerTick>,
-    history: Res<LagCompensationHistory>,
-    players: Query<(&PlayerOwner, &PlayerId)>,
-) {
-    let Some(client) = shot.client_id.entity() else {
-        return;
-    };
-    let Some((_, shooter_id)) = players.iter().find(|(owner, _)| owner.0 == client) else {
-        return;
-    };
-
-    let min_rewind_tick = tick.0.saturating_sub(history.max_frames as u64);
-    let sample_time = RemoteRenderTime::new(shot.client_sample_tick, shot.client_sample_alpha)
-        .clamp_ticks(min_rewind_tick, tick.0);
-
-    let hit = history.raycast_capsules_at_time(LagCompensatedCapsuleCast {
-        server_time: sample_time,
-        origin: shot.origin,
-        direction: shot.direction,
-        max_distance: HITSCAN_MAX_DISTANCE,
-        radius: PLAYER_CAPSULE_RADIUS,
-        half_height: PLAYER_CAPSULE_HALF_HEIGHT,
-        ignored_player: Some(*shooter_id),
-    });
-
-    commands.server_trigger(ToClients {
-        mode: SendMode::Direct(ClientId::Client(client)),
-        message: HitScanAck {
-            shot_id: shot.shot_id,
-            server_tick: tick.0,
-            client_sample_tick: sample_time.tick,
-            client_sample_alpha: sample_time.alpha,
-            hit,
-        },
-    });
 }
 
 fn publish_authoritative_player_snapshots(

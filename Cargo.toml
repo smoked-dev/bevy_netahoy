@@ -20,6 +20,7 @@ serde = { version = "1.0", features = ["derive"] }
 [dev-dependencies]
 aeronet_replicon = { version = "0.20.0", default-features = false, features = ["client", "server"] }
 aeronet_websocket = { version = "0.20.0", default-features = false, features = ["client", "server"] }
+ahoy_replicon = { path = "examples/ahoy_replicon" }
 bevy_enhanced_input = "0.24"
 
 [[example]]
