@@ -15,7 +15,7 @@ mod hitscan;
 mod jumppad;
 mod rockets;
 mod shared;
-use jumppad::register_jump_pad_zones;
+use jumppad::register_jump_pad_effect;
 use shared::*;
 
 fn main() -> AppExit {
@@ -53,7 +53,7 @@ impl Plugin for ServerPlugin {
         app.add_plugins((WebSocketServerPlugin, AeronetRepliconServerPlugin))
             .add_observer(join_player)
             .add_observer(clean_up_disconnected_player)
-            .add_systems(Startup, (setup_server, register_jump_pad_zones).chain())
+            .add_systems(Startup, (setup_server, register_jump_pad_effect))
             .add_systems(
                 FixedPreUpdate,
                 (update_flying_target, reset_fallen_players)

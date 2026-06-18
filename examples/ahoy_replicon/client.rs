@@ -22,7 +22,7 @@ mod jumppad;
 mod rockets;
 mod shared;
 use hitscan::ExampleHitscanClientSystems;
-use jumppad::register_jump_pad_zones;
+use jumppad::register_jump_pad_effect;
 use shared::*;
 
 const CAMERA_DISTANCE: f32 = 5.2;
@@ -126,7 +126,7 @@ impl Plugin for ClientPlugin {
             .add_observer(log_disconnected)
             .add_systems(
                 Startup,
-                (setup_client, setup_scene, setup_hud, register_jump_pad_zones).chain(),
+                (setup_client, setup_scene, setup_hud, register_jump_pad_effect),
             )
             .add_systems(
                 Update,

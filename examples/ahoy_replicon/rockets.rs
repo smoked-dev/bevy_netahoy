@@ -34,26 +34,28 @@ pub fn add_server_rockets(app: &mut App) {
     app.add_systems(Startup, register_rocket_ability);
 }
 
-fn register_rocket_ability(mut abilities: ResMut<MovementAbilities>) {
-    abilities.0.push(rocket_jump);
+fn register_rocket_ability(mut effects: ResMut<MovementEffects>) {
+    effects.0.push(rocket_jump);
 }
 
-/// The predicted ability: on the fire-button rising edge, raycast against the
-/// static world and return the splash impulse on the firer. Reads only the
-/// caller's view, this command, and static geometry — so it re-derives
+/// The predicted effect: on the fire-button rising edge, raycast against the
+/// static world and add the splash impulse to the firer's velocity. Reads only
+/// the caller's view, this command, and static geometry — so it re-derives
 /// identically every replay step and cannot desync.
 fn rocket_jump(
     view: MoveView,
     command: &AhoyUserCmd,
     previous_buttons: AhoyButtons,
     world: &SpatialQuery,
-) -> Option<Vec3> {
+    velocity: &mut Vec3,
+) {
     if !command.buttons.fire_rocket || previous_buttons.fire_rocket {
-        return None;
+        return;
     }
-
-    let explosion = rocket_explosion_point(view.position, view.look, world)?;
-    Some(rocket_impulse(explosion, view.position))
+    let Some(explosion) = rocket_explosion_point(view.position, view.look, world) else {
+        return;
+    };
+    *velocity += rocket_impulse(explosion, view.position);
 }
 
 /// Where a shot fired from `position` along `look` detonates against the static

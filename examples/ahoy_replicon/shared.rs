@@ -12,10 +12,13 @@ use bevy_replicon::prelude::*;
 
 use ahoy_replicon::{HitScanAck, HitScanShot};
 
-use crate::jumppad::{JumpPad, JUMP_PAD_SIZE, JUMP_PAD_TRANSLATION};
+use crate::jumppad::{spawn_jump_pad_trigger, JUMP_PAD_SIZE, JUMP_PAD_TRANSLATION};
 
 pub const WORLD_COLLISION_LAYER: LayerMask = LayerMask(1 << 0);
 pub const PLAYER_COLLISION_LAYER: LayerMask = LayerMask(1 << 1);
+/// Jump-pad trigger sensors live here. The KCC ignores sensors, so they never
+/// block movement; the jump-pad movement effect queries this layer to detect them.
+pub const JUMP_PAD_COLLISION_LAYER: LayerMask = LayerMask(1 << 2);
 pub const SPAWN_POINT: Vec3 = Vec3::new(0.0, 2.2, 8.0);
 pub const FLYING_TARGET_PLAYER_ID: u64 = 9_001;
 pub struct ExampleSharedPlugin;
@@ -118,7 +121,7 @@ pub fn spawn_world_colliders(commands: &mut Commands) {
         };
 
         if world_box.name == "jump pad" {
-            commands.spawn((Name::new(world_box.name), transform, JumpPad));
+            spawn_jump_pad_trigger(commands, &transform);
             continue;
         }
 

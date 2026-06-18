@@ -11,7 +11,7 @@ use bevy_replicon::prelude::*;
 
 use crate::{
     math::{RemoteRenderTime, RemoteSnapshotSample, sample_buffer_at},
-    pmove::{AhoyPredictionFrame, LaunchZones, MovementAbilities, NetAhoyStepper},
+    pmove::{AhoyPredictionFrame, MovementEffects, NetAhoyStepper},
     protocol::*,
 };
 
@@ -45,8 +45,7 @@ impl Plugin for ClientNetAhoyPlugin {
             .init_resource::<PredictionHistory>()
             .init_resource::<LocalCommandHistory>()
             .init_resource::<ClientServerClock>()
-            .init_resource::<LaunchZones>()
-            .init_resource::<MovementAbilities>()
+            .init_resource::<MovementEffects>()
             .add_observer(set_local_player_id)
             .add_systems(OnEnter(ClientState::Connected), announce_join)
             .configure_sets(
