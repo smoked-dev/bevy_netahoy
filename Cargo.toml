@@ -12,6 +12,7 @@ type_complexity = "allow"
 [dependencies]
 aeronet = "0.20.0"
 avian3d = "0.6.1"
+bitflags = { version = "2", features = ["serde"] }
 bevy = { version = "0.18.1", features = ["serialize"] }
 bevy_ahoy = { git = "https://github.com/smoked-dev/bevy_ahoy.git", branch = "step-entity", default-features = false, features = ["serialize"] }
 bevy_replicon = { version = "0.39.5", default-features = false, features = ["client", "server"] }

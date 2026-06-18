@@ -236,7 +236,7 @@ fn apply_player_commands(
                 break;
             };
 
-            if let Err(err) = stepper.pmove(player, command, command_buffer.last_buttons) {
+            if let Err(err) = stepper.step(player, command, command_buffer.last_buttons) {
                 warn!(
                     "failed to step server KCC for {player} command {}: {err}",
                     command.sequence

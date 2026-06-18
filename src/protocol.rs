@@ -9,6 +9,7 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 use bevy_ahoy::{MantleState, prelude::*};
 use bevy_replicon::prelude::*;
+use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_PORT: u16 = 5000;
@@ -49,18 +50,24 @@ pub struct JoinAccepted {
     pub player_id: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
-pub struct AhoyButtons {
-    pub jump: bool,
-    pub crouch: bool,
-    pub tac: bool,
-    pub mantle: bool,
-    pub crane: bool,
-    pub climbdown: bool,
-    pub swim_up: bool,
-    /// Pragmatic seam for the demo's rocket-jump ability. Generalize to a small
-    /// button bitset if more game abilities ever need their own command bits.
-    pub fire_rocket: bool,
+bitflags! {
+    /// Movement buttons for one command. Bits `0..16` are library-defined (the
+    /// KCC reads them); bits `16..` are game-defined and library-opaque — the
+    /// library replays them in the sequenced command but never interprets them,
+    /// so weapon fire and other game inputs ride here via [`from_bits_retain`]
+    /// and stay rollback-correct (they replay with the command stream).
+    ///
+    /// [`from_bits_retain`]: AhoyButtons::from_bits_retain
+    #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+    pub struct AhoyButtons: u32 {
+        const JUMP = 1 << 0;
+        const CROUCH = 1 << 1;
+        const TAC = 1 << 2;
+        const MANTLE = 1 << 3;
+        const CRANE = 1 << 4;
+        const CLIMBDOWN = 1 << 5;
+        const SWIM_UP = 1 << 6;
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]

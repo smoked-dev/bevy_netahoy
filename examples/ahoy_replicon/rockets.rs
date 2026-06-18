@@ -13,6 +13,11 @@ use bevy_netahoy::*;
 
 use super::shared::WORLD_COLLISION_LAYER;
 
+/// Our game's bit in [`AhoyButtons`] for "fire rocket", in the game-owned high
+/// range. The library never sees this — it just replays the bits; we own the
+/// meaning. `from_bits_retain` keeps the bit through (de)serialization.
+pub const ROCKET_FIRE: AhoyButtons = AhoyButtons::from_bits_retain(1 << 16);
+
 const ROCKET_EYE_HEIGHT: f32 = 0.6;
 const ROCKET_SPEED: f32 = 42.0;
 const ROCKET_LIFETIME_SECONDS: f32 = 1.35;
@@ -38,10 +43,10 @@ fn register_rocket_ability(mut effects: ResMut<MovementEffects>) {
     effects.0.push(rocket_jump);
 }
 
-/// The predicted effect: on the fire-button rising edge, raycast against the
+/// The predicted effect: on the fire bit's rising edge, raycast against the
 /// static world and add the splash impulse to the firer's velocity. Reads only
-/// the caller's view, this command, and static geometry — so it re-derives
-/// identically every replay step and cannot desync.
+/// the caller's view, this command's button bits, `previous_buttons`, and static
+/// geometry — so it re-derives identically every replay step and cannot desync.
 fn rocket_jump(
     view: MoveView,
     command: &AhoyUserCmd,
@@ -49,7 +54,9 @@ fn rocket_jump(
     world: &SpatialQuery,
     velocity: &mut Vec3,
 ) {
-    if !command.buttons.fire_rocket || previous_buttons.fire_rocket {
+    let firing = command.buttons.contains(ROCKET_FIRE);
+    let was_firing = previous_buttons.contains(ROCKET_FIRE);
+    if !firing || was_firing {
         return;
     }
     let Some(explosion) = rocket_explosion_point(view.position, view.look, world) else {
@@ -108,7 +115,7 @@ fn spawn_rocket_visual(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let pressed = input.buttons.fire_rocket;
+    let pressed = input.buttons.contains(ROCKET_FIRE);
     let edge = pressed && !*fired;
     *fired = pressed;
     if !edge {

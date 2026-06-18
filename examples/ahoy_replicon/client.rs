@@ -565,16 +565,22 @@ fn gather_client_input(
 
     input.movement = movement;
     input.look = Vec2::new(look.yaw, look.pitch);
-    input.buttons = AhoyButtons {
-        jump: keys.pressed(KeyCode::Space),
-        crouch: keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::KeyC),
-        tac: keys.pressed(KeyCode::ShiftLeft),
-        mantle: keys.pressed(KeyCode::KeyE),
-        crane: keys.pressed(KeyCode::KeyQ),
-        climbdown: keys.pressed(KeyCode::KeyZ),
-        swim_up: keys.pressed(KeyCode::Space),
-        fire_rocket: mouse.pressed(MouseButton::Right) || keys.pressed(KeyCode::KeyF),
-    };
+    let mut buttons = AhoyButtons::empty();
+    buttons.set(AhoyButtons::JUMP, keys.pressed(KeyCode::Space));
+    buttons.set(
+        AhoyButtons::CROUCH,
+        keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::KeyC),
+    );
+    buttons.set(AhoyButtons::TAC, keys.pressed(KeyCode::ShiftLeft));
+    buttons.set(AhoyButtons::MANTLE, keys.pressed(KeyCode::KeyE));
+    buttons.set(AhoyButtons::CRANE, keys.pressed(KeyCode::KeyQ));
+    buttons.set(AhoyButtons::CLIMBDOWN, keys.pressed(KeyCode::KeyZ));
+    buttons.set(AhoyButtons::SWIM_UP, keys.pressed(KeyCode::Space));
+    buttons.set(
+        rockets::ROCKET_FIRE,
+        mouse.pressed(MouseButton::Right) || keys.pressed(KeyCode::KeyF),
+    );
+    input.buttons = buttons;
 }
 
 fn update_camera_from_local_presentation(

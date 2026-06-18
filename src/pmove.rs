@@ -2,7 +2,7 @@
 //!
 //! [`NetAhoyStepper`] is the single movement code path. Client prediction,
 //! client replay after a misprediction, and server command consumption all go
-//! through [`NetAhoyStepper::pmove`], so they cannot drift apart.
+//! through [`NetAhoyStepper::step`], so they cannot drift apart.
 
 use avian3d::prelude::*;
 use bevy::{
@@ -15,9 +15,10 @@ use bevy_ahoy::{CharacterLook, input::AccumulatedInput, prelude::*};
 use crate::protocol::{AhoyButtons, AhoySnapshot, AhoyUserCmd, NetAhoyMoveState};
 
 /// The deterministic slice of a player's movement state handed to a
-/// [`MovementEffect`]. By value so the effect never holds a live borrow of the
-/// player query, freeing the read-only [`SpatialQuery`] to be borrowed alongside.
-/// Velocity is *not* here — it's the one mutable thing, passed as `&mut Vec3`.
+/// [`MovementEffect`]. By value so the effect never holds a live borrow of
+/// the player query, freeing the read-only [`SpatialQuery`] to be borrowed
+/// alongside. Velocity is *not* here — it's the one mutable thing, passed as
+/// `&mut Vec3`.
 #[derive(Clone, Copy, Debug)]
 pub struct MoveView {
     pub position: Vec3,
@@ -27,11 +28,12 @@ pub struct MoveView {
 
 /// A game movement effect evaluated inside the per-step path: jump pads, rocket
 /// jumps, anything that nudges velocity. It may read only inputs that replay
-/// reproduces — the player's own view, this command, and the *static* world via
-/// the read-only [`SpatialQuery`] — and writes through `&mut Vec3` velocity, so
-/// it can set, add, zero, or clamp as it likes. The narrow signature is the
-/// guardrail: an effect physically cannot read another player or touch anything
-/// but velocity, so it cannot desync on replay.
+/// reproduces — the player's own view, this command (incl. the game-defined
+/// [`AhoyButtons`] bits), `previous_buttons` for edge detection, and the *static*
+/// world via the read-only [`SpatialQuery`] — and writes through `&mut Vec3`
+/// velocity, so it can set, add, zero, or clamp as it likes. The narrow signature
+/// is the guardrail: an effect physically cannot read another player or touch
+/// anything but velocity, so it cannot desync on replay.
 pub type MovementEffect = fn(
     view: MoveView,
     command: &AhoyUserCmd,
@@ -93,7 +95,7 @@ pub struct PmoveParts {
 ///
 /// ```ignore
 /// for command in commands {
-///     stepper.pmove(entity, command, previous_buttons)?;
+///     stepper.step(entity, command, previous_buttons)?;
 ///     previous_buttons = command.buttons;
 /// }
 /// ```
@@ -116,7 +118,9 @@ pub struct NetAhoyStepper<'w, 's> {
 
 impl NetAhoyStepper<'_, '_> {
     /// Run one user command through one KCC movement step for `entity`.
-    pub fn pmove(
+    /// `previous_buttons` is the prior command's buttons, used for rising-edge
+    /// detection (library bits in the controller, game bits in movement effects).
+    pub fn step(
         &mut self,
         entity: Entity,
         command: AhoyUserCmd,
@@ -150,9 +154,9 @@ impl NetAhoyStepper<'_, '_> {
 
         // Movement effects (jump pads, rocket jumps, ...) run inside the step so
         // client replay and the server reproduce them. Each reads only `view` +
-        // this command + the read-only static-world SpatialQuery, and mutates
-        // `velocity` in registration order. `velocity` is a local copy, so p1 is
-        // not borrowed while p2 (SpatialQuery) is.
+        // this command + `previous_buttons` + the read-only static-world
+        // SpatialQuery, and mutates `velocity` in registration order. `velocity`
+        // is a local copy, so p1 is not borrowed while p2 (SpatialQuery) is.
         if !self.effects.0.is_empty() {
             // Clone the (cheap, fn-pointer) list to drop the Res borrow before p2.
             let effects = self.effects.0.clone();
@@ -260,22 +264,24 @@ fn apply_usercmd(
     previous_buttons: AhoyButtons,
 ) {
     input.last_movement = Some(command.movement.clamp_length_max(1.0));
-    input.swim_up = command.buttons.swim_up;
-    input.crouched = command.buttons.crouch;
+    input.swim_up = command.buttons.contains(AhoyButtons::SWIM_UP);
+    input.crouched = command.buttons.contains(AhoyButtons::CROUCH);
 
-    if command.buttons.jump && !previous_buttons.jump {
+    // Bits set this command but not last = rising edges.
+    let pressed = command.buttons - previous_buttons;
+    if pressed.contains(AhoyButtons::JUMP) {
         input.jumped = Some(Stopwatch::new());
     }
-    if command.buttons.tac && !previous_buttons.tac {
+    if pressed.contains(AhoyButtons::TAC) {
         input.tac = Some(Stopwatch::new());
     }
-    if command.buttons.crane && !previous_buttons.crane {
+    if pressed.contains(AhoyButtons::CRANE) {
         input.craned = Some(Stopwatch::new());
     }
-    if command.buttons.mantle && !previous_buttons.mantle {
+    if pressed.contains(AhoyButtons::MANTLE) {
         input.mantled = Some(Stopwatch::new());
     }
-    if command.buttons.climbdown && !previous_buttons.climbdown {
+    if pressed.contains(AhoyButtons::CLIMBDOWN) {
         input.climbdown = Some(Stopwatch::new());
     }
 

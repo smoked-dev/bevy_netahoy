@@ -104,6 +104,8 @@ impl LocalPlayerId {
 pub struct ClientInput {
     pub movement: Vec2,
     pub look: Vec2,
+    /// Library buttons plus any game-defined bits (e.g. weapon fire) the game
+    /// sets in the high range. The library never interprets the game bits.
     pub buttons: AhoyButtons,
 }
 
@@ -538,7 +540,7 @@ fn drive_prediction_and_send_input(
         buttons: input.buttons,
     };
 
-    if let Err(err) = stepper.pmove(predicted_entity, command, input_state.previous_buttons) {
+    if let Err(err) = stepper.step(predicted_entity, command, input_state.previous_buttons) {
         warn!(
             "failed to step predicted KCC for command {}: {err}",
             command.sequence
@@ -652,7 +654,7 @@ fn reconcile_local_prediction(
     let replayed = replay_commands.len();
     let mut previous_buttons = snapshot.last_processed_buttons;
     for command in replay_commands {
-        if let Err(err) = stepper.pmove(predicted_entity, command, previous_buttons) {
+        if let Err(err) = stepper.step(predicted_entity, command, previous_buttons) {
             warn!(
                 "failed to replay predicted KCC for command {}: {err}",
                 command.sequence
